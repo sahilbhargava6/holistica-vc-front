@@ -144,7 +144,11 @@ function CustomControlBar() {
     if (room) {
       room.disconnect();
     }
-    window.location.href = '/';
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: 'LEAVE_ROOM' }, '*');
+    } else {
+      window.location.href = '/';
+    }
   };
 
   return (
