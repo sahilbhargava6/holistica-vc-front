@@ -67,15 +67,26 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
 
     try {
       setCameraError(null);
-      const constraints: MediaStreamConstraints = {
-        video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
-        audio: false, // Don't grab audio for the preview — just camera
-      };
+      let stream: MediaStream | null = null;
+      try {
+        const constraints: MediaStreamConstraints = {
+          video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
+          audio: false,
+        };
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (exactErr: any) {
+        // Fallback for virtual cameras (Camo Studio, NVIDIA Broadcast, OBS) which often reject exact constraints
+        console.warn('Exact deviceId constraint failed, retrying with flexible constraint for virtual camera:', exactErr);
+        const fallbackConstraints: MediaStreamConstraints = {
+          video: videoDeviceId ? { deviceId: videoDeviceId, width: { ideal: 1280 }, height: { ideal: 720 } } : true,
+          audio: false,
+        };
+        stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      if (videoRef.current) {
+      if (videoRef.current && stream) {
         videoRef.current.srcObject = stream;
         videoRef.current.muted = true;
         await videoRef.current.play();
@@ -92,8 +103,8 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
         setCameraError('Camera permission was denied. Please allow camera access in your browser settings.');
       } else if (err.name === 'NotFoundError') {
         setCameraError('No camera found. Please connect a camera and try again.');
-      } else if (err.name === 'NotReadableError' || err.name === 'AbortError') {
-        setCameraError('Camera is in use by another application. Please close other apps using the camera and refresh.');
+      } else if (err.name === 'NotReadableError' || err.name === 'AbortError' || err.name === 'OverconstrainedError') {
+        setCameraError('Camera is in use by another application or virtual camera failed to open. Please check Camo/NVIDIA Broadcast app.');
       } else {
         setCameraError(`Camera error: ${err.message || 'Unknown error'}`);
       }

@@ -78,7 +78,7 @@ export default function SessionChat({ role }: { role: UserRole }) {
     };
   }, [room]);
 
-  // Merge public chat messages (`useChat` + `customPublicMessages`) and private whispers, deduplicated by ID & sorted by timestamp
+  // Merge public chat messages (`useChat` + `customPublicMessages`) and private whispers, deduplicated by content & time window so messages never appear twice
   const mergedMessages = Array.from(
     new Map(
       [
@@ -106,7 +106,12 @@ export default function SessionChat({ role }: { role: UserRole }) {
           isLocal: w.isLocal,
           isWhisper: true,
         })),
-      ].map((item) => [item.id, item])
+      ].map((item) => [
+        item.isWhisper
+          ? item.id
+          : `${item.text.trim()}_${item.senderName}_${Math.floor(item.timestamp / 5000)}`,
+        item,
+      ])
     ).values()
   ).sort((a, b) => a.timestamp - b.timestamp);
 

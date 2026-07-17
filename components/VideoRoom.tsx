@@ -25,15 +25,61 @@ function CustomControlBar() {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
   const room = useRoomContext();
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [currentCamIndex, setCurrentCamIndex] = useState(0);
+  const [selectedCamId, setSelectedCamId] = useState<string>('');
+  const [selectedMicId, setSelectedMicId] = useState<string>('');
+  const [showDeviceMenu, setShowDeviceMenu] = useState(false);
 
   useEffect(() => {
     if (Room.getLocalDevices) {
       Room.getLocalDevices('videoinput').then((devs) => {
         setVideoDevices(devs);
+        if (devs.length > 0) setSelectedCamId(devs[0].deviceId);
+      }).catch(() => {});
+      Room.getLocalDevices('audioinput').then((devs) => {
+        setAudioDevices(devs);
+        if (devs.length > 0) setSelectedMicId(devs[0].deviceId);
       }).catch(() => {});
     }
   }, []);
+
+  const handleSelectVideoDevice = async (deviceId: string) => {
+    setSelectedCamId(deviceId);
+    if (!room) return;
+    try {
+      await room.switchActiveDevice('videoinput', deviceId);
+    } catch (err) {
+      console.error('Failed to switch active video device, attempting fallback restart for virtual camera:', err);
+      try {
+        await localParticipant.setCameraEnabled(false);
+        await localParticipant.setCameraEnabled(true, {
+          deviceId: deviceId,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        });
+      } catch (fallbackErr) {
+        console.error('Camera switch fallback failed:', fallbackErr);
+        await localParticipant.setCameraEnabled(true, { deviceId });
+      }
+    }
+  };
+
+  const handleSelectAudioDevice = async (deviceId: string) => {
+    setSelectedMicId(deviceId);
+    if (!room) return;
+    try {
+      await room.switchActiveDevice('audioinput', deviceId);
+    } catch (err) {
+      console.error('Failed to switch active audio device, attempting fallback restart:', err);
+      try {
+        await localParticipant.setMicrophoneEnabled(false);
+        await localParticipant.setMicrophoneEnabled(true, { deviceId });
+      } catch (fallbackErr) {
+        console.error('Audio switch fallback failed:', fallbackErr);
+      }
+    }
+  };
 
   const flipCamera = async () => {
     if (!room) return;
@@ -46,7 +92,7 @@ function CustomControlBar() {
       if (devs && devs.length > 1) {
         const nextIndex = (currentCamIndex + 1) % devs.length;
         const nextDevice = devs[nextIndex];
-        await room.switchActiveDevice('videoinput', nextDevice.deviceId);
+        await handleSelectVideoDevice(nextDevice.deviceId);
         setCurrentCamIndex(nextIndex);
       } else {
         // Fallback for iOS Safari / Mobile where deviceId switching needs facingMode toggle
@@ -103,7 +149,60 @@ function CustomControlBar() {
   };
 
   return (
-    <div className="flex items-center gap-2 sm:gap-3 bg-gray-900/95 border border-gray-700/80 rounded-2xl shadow-2xl backdrop-blur-md px-3 py-2 sm:px-5 sm:py-2.5">
+    <div className="relative flex items-center gap-2 sm:gap-3 bg-gray-900/95 border border-gray-700/80 rounded-2xl shadow-2xl backdrop-blur-md px-3 py-2 sm:px-5 sm:py-2.5">
+      {/* Device Selection Menu Popup */}
+      {showDeviceMenu && (
+        <div className="absolute bottom-full left-0 mb-3 w-72 sm:w-80 bg-gray-950 border border-gray-800 rounded-2xl p-4 shadow-2xl backdrop-blur-xl z-50 space-y-4">
+          <div className="flex items-center justify-between border-b border-gray-800/80 pb-2.5">
+            <span className="text-xs font-bold text-gray-200 uppercase tracking-wider flex items-center gap-1.5">
+              <span>⚙️</span> Device Settings
+            </span>
+            <button
+              onClick={() => setShowDeviceMenu(false)}
+              className="text-gray-400 hover:text-white text-sm"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block">
+              📹 Camera Device (Camo/NVIDIA/Webcam)
+            </label>
+            <select
+              value={selectedCamId}
+              onChange={(e) => handleSelectVideoDevice(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-[#76C7A6]"
+            >
+              {videoDevices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Camera ${d.deviceId.slice(0, 6)}`}
+                </option>
+              ))}
+              {videoDevices.length === 0 && <option value="">No cameras found</option>}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block">
+              🎤 Microphone Device
+            </label>
+            <select
+              value={selectedMicId}
+              onChange={(e) => handleSelectAudioDevice(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-[#76C7A6]"
+            >
+              {audioDevices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Microphone ${d.deviceId.slice(0, 6)}`}
+                </option>
+              ))}
+              {audioDevices.length === 0 && <option value="">No microphones found</option>}
+            </select>
+          </div>
+        </div>
+      )}
+
       <button
         onClick={toggleMic}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -126,16 +225,36 @@ function CustomControlBar() {
         <span>{isCameraEnabled ? '📹 Cam On' : '🚫 Cam Off'}</span>
       </button>
 
-      {/* Flip Camera button for mobile phones and multi-camera setups */}
+      {/* Flip Camera button for mobile phones */}
       {isCameraEnabled && (
         <button
           onClick={flipCamera}
           title="Switch between front selfie camera and back camera"
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 transition-all shadow-sm"
+          className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 transition-all shadow-sm"
         >
           <span>🔄 Flip</span>
         </button>
       )}
+
+      {/* Settings / Devices button right inside live control bar */}
+      <button
+        onClick={() => {
+          // Refresh device list right when opening menu
+          if (Room.getLocalDevices) {
+            Room.getLocalDevices('videoinput').then(setVideoDevices).catch(() => {});
+            Room.getLocalDevices('audioinput').then(setAudioDevices).catch(() => {});
+          }
+          setShowDeviceMenu(!showDeviceMenu);
+        }}
+        title="Change Camera or Microphone Device"
+        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+          showDeviceMenu
+            ? 'bg-[#76C7A6] text-gray-950 border-[#76C7A6]'
+            : 'bg-gray-800 hover:bg-gray-700 text-gray-200 border-gray-700'
+        }`}
+      >
+        <span>⚙️ Devices</span>
+      </button>
 
       <button
         onClick={toggleScreen}
