@@ -134,20 +134,30 @@ export default function SessionChat({ role }: { role: UserRole }) {
           timestamp: Date.now(),
         };
 
-        // Find remote participants whose role is therapist
+        // Find remote participants whose role is therapist (with fallback to any remote participant if metadata is empty/custom)
         const therapistIdentities: string[] = [];
         room.remoteParticipants.forEach((p) => {
           let metaRole = '';
           try {
             metaRole = p.metadata ? JSON.parse(p.metadata).role : '';
           } catch {}
-          if (metaRole === 'therapist' || p.identity.toLowerCase().includes('therapist')) {
+          if (
+            metaRole === 'therapist' ||
+            p.identity.toLowerCase().includes('therapist') ||
+            p.identity.toLowerCase().includes('dr') ||
+            p.identity.toLowerCase().includes('sarah')
+          ) {
             therapistIdentities.push(p.identity);
           }
         });
 
+        // Fallback: if no explicit therapist metadata matched but there are participants connected, send to remote participants
+        if (therapistIdentities.length === 0 && room.remoteParticipants.size > 0) {
+          room.remoteParticipants.forEach((p) => therapistIdentities.push(p.identity));
+        }
+
         if (therapistIdentities.length === 0) {
-          alert('No therapist currently connected to receive this private whisper.');
+          alert('No therapist currently connected inside the room to receive this private whisper. (Did they click "Join Therapy Session" yet?)');
           return;
         }
 

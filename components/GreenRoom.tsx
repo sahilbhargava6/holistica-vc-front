@@ -264,6 +264,13 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
               <span className="font-semibold text-[#76C7A6]">{userName}</span>
             </div>
           </div>
+
+          <div className="p-3.5 rounded-xl bg-[#76C7A6]/15 border border-[#76C7A6]/30 text-xs text-[#76C7A6] font-medium flex items-center gap-2">
+            <span className="text-base">💡</span>
+            <span>
+              <strong>Ready to connect?</strong> Click the green &quot;Join Therapy Session&quot; button below to enter the live room and connect with remote participants right now!
+            </span>
+          </div>
         </div>
 
         {/* Footer Actions */}
