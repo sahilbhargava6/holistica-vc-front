@@ -4,9 +4,11 @@ import { useState, useEffect } from 'react';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
-  ControlBar,
   useTracks,
   useParticipants,
+  useRemoteParticipants,
+  useLocalParticipant,
+  useRoomContext,
   ParticipantTile,
 } from '@livekit/components-react';
 import { LocalVideoTrack, Track } from 'livekit-client';
@@ -14,6 +16,94 @@ import { BackgroundBlur } from '@livekit/track-processors';
 import '@livekit/components-styles';
 import { VideoRoomProps, ROLE_UI_CONFIG, UserRole } from '@/lib/types';
 import SessionChat from '@/components/SessionChat';
+
+/**
+ * CustomControlBar — Explicit, always-visible device and session controls.
+ * Ensures buttons are never hidden or collapsed by LiveKit default ControlBar heuristics.
+ */
+function CustomControlBar() {
+  const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
+  const room = useRoomContext();
+
+  const toggleMic = async () => {
+    try {
+      await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+    } catch (err) {
+      console.error('Mic toggle failed:', err);
+      alert('Could not access microphone. Please check browser permissions.');
+    }
+  };
+
+  const toggleCam = async () => {
+    try {
+      await localParticipant.setCameraEnabled(!isCameraEnabled);
+    } catch (err) {
+      console.error('Camera toggle failed:', err);
+      alert('Could not access camera. Please check permissions or close other apps using the webcam.');
+    }
+  };
+
+  const toggleScreen = async () => {
+    try {
+      await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
+    } catch (err) {
+      console.error('Screen share toggle failed:', err);
+    }
+  };
+
+  const leaveRoom = () => {
+    if (room) {
+      room.disconnect();
+    }
+    window.location.href = '/';
+  };
+
+  return (
+    <div className="flex items-center gap-2.5 sm:gap-3 bg-gray-900/95 border border-gray-700/80 rounded-2xl shadow-2xl backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5">
+      <button
+        onClick={toggleMic}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+          isMicrophoneEnabled
+            ? 'bg-[#76C7A6]/20 text-[#76C7A6] border border-[#76C7A6]/40 hover:bg-[#76C7A6]/30'
+            : 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30'
+        }`}
+      >
+        <span>{isMicrophoneEnabled ? '🎤 Mic On' : '🔇 Mic Off'}</span>
+      </button>
+
+      <button
+        onClick={toggleCam}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+          isCameraEnabled
+            ? 'bg-[#76C7A6]/20 text-[#76C7A6] border border-[#76C7A6]/40 hover:bg-[#76C7A6]/30'
+            : 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30'
+        }`}
+      >
+        <span>{isCameraEnabled ? '📹 Cam On' : '🚫 Cam Off'}</span>
+      </button>
+
+      <button
+        onClick={toggleScreen}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+          isScreenShareEnabled
+            ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 hover:bg-sky-500/30'
+            : 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700'
+        }`}
+      >
+        <span>{isScreenShareEnabled ? '🖥️ Stop Share' : '🖥️ Share Screen'}</span>
+      </button>
+
+      <div className="w-px h-5 bg-gray-700 hidden sm:block" />
+
+      <button
+        onClick={leaveRoom}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-all shadow-lg shadow-red-600/20"
+      >
+        <span>🚪 Leave</span>
+      </button>
+    </div>
+  );
+}
 
 /**
  * CustomVideoLayout — Renders the custom layout matching the healthcare wireframe:
@@ -36,6 +126,7 @@ function CustomVideoLayout({
   // Fetch camera and screen share tracks of all participants
   const tracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare]);
   const participants = useParticipants();
+  const remoteParticipants = useRemoteParticipants();
 
   // Separate local participant's tracks vs remote participants' tracks
   const localTracks = tracks.filter((t) => t.participant.isLocal);
@@ -143,8 +234,8 @@ function CustomVideoLayout({
 
         {/* Main Big Screen (Remote Participants View) */}
         <div className="w-full h-full flex items-center justify-center p-4">
-          {remoteTracks.length === 0 ? (
-            /* Waiting state when no remote participant has published yet */
+          {remoteTracks.length === 0 && remoteParticipants.length === 0 ? (
+            /* Waiting state when no remote participant has joined yet */
             <div className="text-center space-y-3 max-w-sm px-6 py-8 rounded-2xl bg-gray-900/40 border border-gray-800/60 backdrop-blur-sm">
               <div className="w-14 h-14 mx-auto rounded-full bg-[#76C7A6]/10 border border-[#76C7A6]/20 flex items-center justify-center text-[#76C7A6] animate-pulse">
                 <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -153,8 +244,23 @@ function CustomVideoLayout({
               </div>
               <h3 className="text-base font-semibold text-gray-200">Waiting for others</h3>
               <p className="text-xs text-gray-400 leading-relaxed">
-                You are inside the session. Remote participants ({participants.length - 1} connected) will appear right here when their camera turns on.
+                You are inside the session (`{userName}`). Remote participants will appear right here as soon as they enter from the Green Room.
               </p>
+            </div>
+          ) : remoteTracks.length === 0 && remoteParticipants.length > 0 ? (
+            /* Remote participants connected but their cameras are currently OFF */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full max-w-4xl max-h-[80%]">
+              {remoteParticipants.map((p) => (
+                <div key={p.identity} className="w-full h-full rounded-2xl bg-gray-900/60 border border-gray-800 flex flex-col items-center justify-center gap-3 p-6 shadow-xl">
+                  <div className="w-16 h-16 rounded-full bg-[#76C7A6]/20 border border-[#76C7A6]/40 flex items-center justify-center text-[#76C7A6] font-bold text-xl shadow-lg">
+                    {p.identity.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="text-center">
+                    <h4 className="text-base font-semibold text-gray-200">{p.identity}</h4>
+                    <span className="text-xs text-[#76C7A6] font-medium block mt-0.5">Connected (Camera Off)</span>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : remoteTracks.length === 1 ? (
             /* Single Remote Participant (Full Screen inside Black Box) */
@@ -212,19 +318,10 @@ function CustomVideoLayout({
           </div>
         )}
 
-        {/* Bottom Center ControlBar (Therapist/Client controls) */}
+        {/* Bottom Center CustomControlBar (Always visible & accessible) */}
         {config.showControlBar && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
-            <div className="bg-gray-900/95 border border-gray-700/80 rounded-2xl shadow-2xl backdrop-blur-md px-4 py-2">
-              <ControlBar
-                controls={{
-                  microphone: true,
-                  camera: true,
-                  screenShare: true,
-                  leave: true,
-                }}
-              />
-            </div>
+            <CustomControlBar />
           </div>
         )}
       </div>

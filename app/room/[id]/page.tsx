@@ -27,9 +27,10 @@ export default function RoomPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
 
-  const roomId = params.id;
-  const role = (searchParams.get('role') as UserRole) || 'client';
-  const userId = searchParams.get('userId') || 'anonymous';
+  const roomId = decodeURIComponent(params.id || '').trim();
+  const rawRole = (searchParams.get('role') || 'client').trim().toLowerCase();
+  const role = rawRole as UserRole;
+  const userId = (searchParams.get('userId') || 'anonymous').trim();
 
   const [state, setState] = useState<RoomConnectionState>({
     token: null,
@@ -41,8 +42,8 @@ export default function RoomPage() {
   const [blurEnabled, setBlurEnabled] = useState(false);
   const [sessionMeta, setSessionMeta] = useState<{ durationMinutes?: number; expiresAt?: number }>({});
 
-  const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL || 'ws://localhost:7880';
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  const serverUrl = (process.env.NEXT_PUBLIC_LIVEKIT_URL || 'ws://localhost:7880').trim().replace(/\/+$/, '');
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').trim().replace(/\/+$/, '');
 
   useEffect(() => {
     // Validate the role before making the API call
