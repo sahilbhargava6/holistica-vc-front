@@ -215,9 +215,8 @@ function CustomVideoLayout({
         {/* Bottom Center ControlBar (Therapist/Client controls) */}
         {config.showControlBar && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30">
-            <div className="bg-gray-900/90 border border-gray-700/80 rounded-full shadow-2xl backdrop-blur-md px-3 py-1">
+            <div className="bg-gray-900/95 border border-gray-700/80 rounded-2xl shadow-2xl backdrop-blur-md px-4 py-2">
               <ControlBar
-                variation="minimal"
                 controls={{
                   microphone: true,
                   camera: true,

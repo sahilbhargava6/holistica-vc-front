@@ -29,10 +29,13 @@ export default function SessionChat({ role }: { role: UserRole }) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Private Whispers state
+  // Private Whispers and Custom Public Messages state
   const [whispers, setWhispers] = useState<WhisperMessage[]>([]);
+  const [customPublicMessages, setCustomPublicMessages] = useState<
+    { id: string; timestamp: number; text: string; senderName: string; isLocal: boolean }[]
+  >([]);
 
-  // Listen for incoming Private Whisper DataChannel packets
+  // Listen for incoming DataChannel packets (both whispers and public chat)
   useEffect(() => {
     if (!room) return;
 
@@ -52,9 +55,20 @@ export default function SessionChat({ role }: { role: UserRole }) {
               isLocal: false,
             },
           ]);
+        } else if (data && data.type === 'public_chat') {
+          setCustomPublicMessages((prev) => [
+            ...prev,
+            {
+              id: data.id || `${Date.now()}`,
+              timestamp: data.timestamp || Date.now(),
+              text: data.text || '',
+              senderName: participant?.identity || data.from || 'Participant',
+              isLocal: false,
+            },
+          ]);
         }
       } catch {
-        // Ignore non-whisper or malformed data packets
+        // Ignore malformed data packets
       }
     };
 
@@ -64,25 +78,37 @@ export default function SessionChat({ role }: { role: UserRole }) {
     };
   }, [room]);
 
-  // Merge public chat messages and private whispers, sorted by timestamp
-  const mergedMessages = [
-    ...chatMessages.map((msg) => ({
-      id: msg.id || `${msg.timestamp}-${msg.message}`,
-      timestamp: msg.timestamp || Date.now(),
-      text: msg.message,
-      senderName: msg.from?.identity ?? msg.from?.name ?? 'Participant',
-      isLocal: msg.from?.isLocal ?? false,
-      isWhisper: false,
-    })),
-    ...whispers.map((w) => ({
-      id: w.id,
-      timestamp: w.timestamp,
-      text: w.text,
-      senderName: w.from,
-      isLocal: w.isLocal,
-      isWhisper: true,
-    })),
-  ].sort((a, b) => a.timestamp - b.timestamp);
+  // Merge public chat messages (`useChat` + `customPublicMessages`) and private whispers, deduplicated by ID & sorted by timestamp
+  const mergedMessages = Array.from(
+    new Map(
+      [
+        ...chatMessages.map((msg) => ({
+          id: msg.id || `${msg.timestamp}-${msg.message}`,
+          timestamp: msg.timestamp || Date.now(),
+          text: msg.message,
+          senderName: msg.from?.identity ?? msg.from?.name ?? 'Participant',
+          isLocal: msg.from?.isLocal ?? false,
+          isWhisper: false,
+        })),
+        ...customPublicMessages.map((msg) => ({
+          id: msg.id,
+          timestamp: msg.timestamp,
+          text: msg.text,
+          senderName: msg.senderName,
+          isLocal: msg.isLocal,
+          isWhisper: false,
+        })),
+        ...whispers.map((w) => ({
+          id: w.id,
+          timestamp: w.timestamp,
+          text: w.text,
+          senderName: w.from,
+          isLocal: w.isLocal,
+          isWhisper: true,
+        })),
+      ].map((item) => [item.id, item])
+    ).values()
+  ).sort((a, b) => a.timestamp - b.timestamp);
 
   // Auto-scroll to bottom on every new message or whisper
   useEffect(() => {
@@ -146,9 +172,37 @@ export default function SessionChat({ role }: { role: UserRole }) {
         console.error('Failed to send private clinical whisper:', err);
       }
     } else {
-      // Send standard public chat message (Therapist / Client)
+      // Send standard public chat message (Therapist / Client) via both publishData & useChat
       try {
-        await send(messageToSend);
+        const msgId = Math.random().toString(36).substring(2, 9);
+        const publicPayload = {
+          type: 'public_chat',
+          id: msgId,
+          text: messageToSend,
+          from: room?.localParticipant?.identity || 'Participant',
+          timestamp: Date.now(),
+        };
+
+        // Immediately echo locally
+        setCustomPublicMessages((prev) => [
+          ...prev,
+          {
+            id: msgId,
+            timestamp: publicPayload.timestamp,
+            text: messageToSend,
+            senderName: 'You',
+            isLocal: true,
+          },
+        ]);
+
+        // Broadcast over reliable data channel
+        if (room && room.localParticipant) {
+          const encoded = new TextEncoder().encode(JSON.stringify(publicPayload));
+          await room.localParticipant.publishData(encoded, { reliable: true });
+        }
+
+        // Also trigger useChat send as secondary
+        await send(messageToSend).catch(() => {});
       } catch (err) {
         console.error('Failed to send chat message:', err);
       }
