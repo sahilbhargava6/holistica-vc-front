@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   usePreviewTracks,
   useMediaDeviceSelect,
@@ -30,16 +30,25 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
   const [isReady, setIsReady] = useState(false);
   const videoElRef = useRef<HTMLVideoElement>(null);
 
-  // Fetch local preview tracks (camera + mic)
-  const tracks = usePreviewTracks(
-    {
-      audio: true,
-      video: true,
-    },
-    (err) => {
-      console.error('Failed to access camera/microphone:', err);
-    }
+  // Device selectors
+  const { devices: videoDevices, activeDeviceId: activeVideoId, setActiveMediaDevice: setVideoDevice } =
+    useMediaDeviceSelect({ kind: 'videoinput' });
+  const { devices: audioDevices, activeDeviceId: activeAudioId, setActiveMediaDevice: setAudioDevice } =
+    useMediaDeviceSelect({ kind: 'audioinput' });
+
+  // Dynamically link preview tracks to active selected devices
+  const previewOptions = useMemo(
+    () => ({
+      audio: activeAudioId ? { deviceId: activeAudioId } : true,
+      video: activeVideoId ? { deviceId: activeVideoId } : true,
+    }),
+    [activeAudioId, activeVideoId]
   );
+
+  // Fetch local preview tracks (camera + mic) with selected devices
+  const tracks = usePreviewTracks(previewOptions, (err) => {
+    console.error('Failed to access camera/microphone:', err);
+  });
 
   const videoTrack = tracks?.find(
     (t) => t && t.kind === Track.Kind.Video
@@ -50,6 +59,8 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
     const el = videoElRef.current;
     if (videoTrack && el) {
       videoTrack.attach(el);
+      el.muted = true;
+      el.play().catch((err) => console.error('Error playing preview video:', err));
     }
     return () => {
       if (videoTrack && el) {
@@ -57,12 +68,6 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
       }
     };
   }, [videoTrack]);
-
-  // Device selectors
-  const { devices: videoDevices, activeDeviceId: activeVideoId, setActiveMediaDevice: setVideoDevice } =
-    useMediaDeviceSelect({ kind: 'videoinput' });
-  const { devices: audioDevices, activeDeviceId: activeAudioId, setActiveMediaDevice: setAudioDevice } =
-    useMediaDeviceSelect({ kind: 'audioinput' });
 
   // Apply Background Blur to the preview track when toggled
   useEffect(() => {
