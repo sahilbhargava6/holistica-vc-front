@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   usePreviewTracks,
   useMediaDeviceSelect,
-  VideoTrack,
 } from '@livekit/components-react';
 import { LocalVideoTrack, Track } from 'livekit-client';
 import { BackgroundBlur } from '@livekit/track-processors';
@@ -29,6 +28,7 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
   const config = ROLE_UI_CONFIG[role];
   const [blurEnabled, setBlurEnabled] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const videoElRef = useRef<HTMLVideoElement>(null);
 
   // Fetch local preview tracks (camera + mic)
   const tracks = usePreviewTracks(
@@ -44,6 +44,19 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
   const videoTrack = tracks?.find(
     (t) => t && t.kind === Track.Kind.Video
   ) as LocalVideoTrack | undefined;
+
+  // Attach/detach local video track to HTML video element
+  useEffect(() => {
+    const el = videoElRef.current;
+    if (videoTrack && el) {
+      videoTrack.attach(el);
+    }
+    return () => {
+      if (videoTrack && el) {
+        videoTrack.detach(el);
+      }
+    };
+  }, [videoTrack]);
 
   // Device selectors
   const { devices: videoDevices, activeDeviceId: activeVideoId, setActiveMediaDevice: setVideoDevice } =
@@ -104,7 +117,13 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
           {/* Video Preview Box */}
           <div className="relative aspect-video w-full bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-inner flex items-center justify-center">
             {videoTrack ? (
-              <VideoTrack trackRef={{ publication: undefined, participant: undefined as any, source: Track.Source.Camera }} className="w-full h-full object-cover" />
+              <video
+                ref={videoElRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover -scale-x-100"
+              />
             ) : (
               <div className="flex flex-col items-center justify-center text-gray-500 gap-2 p-6 text-center">
                 <div className="w-12 h-12 rounded-full bg-gray-800/80 flex items-center justify-center text-gray-400">
