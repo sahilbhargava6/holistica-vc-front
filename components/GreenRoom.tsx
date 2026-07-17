@@ -36,11 +36,17 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
   const { devices: audioDevices, activeDeviceId: activeAudioId, setActiveMediaDevice: setAudioDevice } =
     useMediaDeviceSelect({ kind: 'audioinput' });
 
-  // Dynamically link preview tracks to active selected devices
+  // Dynamically link preview tracks to active selected devices safely
   const previewOptions = useMemo(
     () => ({
-      audio: activeAudioId ? { deviceId: activeAudioId } : true,
-      video: activeVideoId ? { deviceId: activeVideoId } : true,
+      audio:
+        activeAudioId && activeAudioId !== 'default' && activeAudioId !== ''
+          ? { deviceId: activeAudioId }
+          : true,
+      video:
+        activeVideoId && activeVideoId !== 'default' && activeVideoId !== ''
+          ? { deviceId: activeVideoId }
+          : true,
     }),
     [activeAudioId, activeVideoId]
   );
@@ -54,11 +60,14 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
     (t) => t && t.kind === Track.Kind.Video
   ) as LocalVideoTrack | undefined;
 
-  // Attach/detach local video track to HTML video element
+  // Attach/detach local video track to HTML video element with fallback srcObject
   useEffect(() => {
     const el = videoElRef.current;
     if (videoTrack && el) {
       videoTrack.attach(el);
+      if (videoTrack.mediaStream) {
+        el.srcObject = videoTrack.mediaStream;
+      }
       el.muted = true;
       el.play().catch((err) => console.error('Error playing preview video:', err));
     }
