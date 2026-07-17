@@ -55,8 +55,7 @@ function CustomControlBar() {
         await localParticipant.setCameraEnabled(false);
         await localParticipant.setCameraEnabled(true, {
           deviceId: deviceId,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          resolution: { width: 1280, height: 720 },
         });
       } catch (fallbackErr) {
         console.error('Camera switch fallback failed:', fallbackErr);
