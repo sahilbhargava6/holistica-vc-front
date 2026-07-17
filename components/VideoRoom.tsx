@@ -11,7 +11,7 @@ import {
   useRoomContext,
   ParticipantTile,
 } from '@livekit/components-react';
-import { LocalVideoTrack, Track } from 'livekit-client';
+import { LocalVideoTrack, Track, Room } from 'livekit-client';
 import { BackgroundBlur } from '@livekit/track-processors';
 import '@livekit/components-styles';
 import { VideoRoomProps, ROLE_UI_CONFIG, UserRole } from '@/lib/types';
@@ -24,6 +24,50 @@ import SessionChat from '@/components/SessionChat';
 function CustomControlBar() {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } = useLocalParticipant();
   const room = useRoomContext();
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [currentCamIndex, setCurrentCamIndex] = useState(0);
+
+  useEffect(() => {
+    if (Room.getLocalDevices) {
+      Room.getLocalDevices('videoinput').then((devs) => {
+        setVideoDevices(devs);
+      }).catch(() => {});
+    }
+  }, []);
+
+  const flipCamera = async () => {
+    if (!room) return;
+    try {
+      let devs = videoDevices;
+      if (Room.getLocalDevices && devs.length <= 1) {
+        devs = await Room.getLocalDevices('videoinput');
+        setVideoDevices(devs);
+      }
+      if (devs && devs.length > 1) {
+        const nextIndex = (currentCamIndex + 1) % devs.length;
+        const nextDevice = devs[nextIndex];
+        await room.switchActiveDevice('videoinput', nextDevice.deviceId);
+        setCurrentCamIndex(nextIndex);
+      } else {
+        // Fallback for iOS Safari / Mobile where deviceId switching needs facingMode toggle
+        const nextFacingMode = currentCamIndex % 2 === 0 ? 'environment' : 'user';
+        await localParticipant.setCameraEnabled(false);
+        await localParticipant.setCameraEnabled(true, { facingMode: nextFacingMode });
+        setCurrentCamIndex(currentCamIndex + 1);
+      }
+    } catch (err) {
+      console.error('Failed to flip camera:', err);
+      try {
+        const nextFacingMode = currentCamIndex % 2 === 0 ? 'environment' : 'user';
+        await localParticipant.setCameraEnabled(false);
+        await localParticipant.setCameraEnabled(true, { facingMode: nextFacingMode });
+        setCurrentCamIndex(currentCamIndex + 1);
+      } catch (fallbackErr) {
+        console.error('Camera flip fallback failed:', fallbackErr);
+        alert('Could not switch camera.');
+      }
+    }
+  };
 
   const toggleMic = async () => {
     try {
@@ -59,7 +103,7 @@ function CustomControlBar() {
   };
 
   return (
-    <div className="flex items-center gap-2.5 sm:gap-3 bg-gray-900/95 border border-gray-700/80 rounded-2xl shadow-2xl backdrop-blur-md px-4 py-2 sm:px-5 sm:py-2.5">
+    <div className="flex items-center gap-2 sm:gap-3 bg-gray-900/95 border border-gray-700/80 rounded-2xl shadow-2xl backdrop-blur-md px-3 py-2 sm:px-5 sm:py-2.5">
       <button
         onClick={toggleMic}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
@@ -81,6 +125,17 @@ function CustomControlBar() {
       >
         <span>{isCameraEnabled ? '📹 Cam On' : '🚫 Cam Off'}</span>
       </button>
+
+      {/* Flip Camera button for mobile phones and multi-camera setups */}
+      {isCameraEnabled && (
+        <button
+          onClick={flipCamera}
+          title="Switch between front selfie camera and back camera"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 transition-all shadow-sm"
+        >
+          <span>🔄 Flip</span>
+        </button>
+      )}
 
       <button
         onClick={toggleScreen}
@@ -342,6 +397,8 @@ export default function VideoRoom({
   userName,
   expiresAt,
   blurEnabled,
+  videoDeviceId,
+  audioDeviceId,
 }: VideoRoomProps) {
   const config = ROLE_UI_CONFIG[role];
 
@@ -349,8 +406,20 @@ export default function VideoRoom({
     <LiveKitRoom
       token={token}
       serverUrl={serverUrl}
-      video={config.enableVideo}
-      audio={config.enableAudio}
+      video={
+        !config.enableVideo
+          ? false
+          : videoDeviceId
+          ? { deviceId: videoDeviceId }
+          : true
+      }
+      audio={
+        !config.enableAudio
+          ? false
+          : audioDeviceId
+          ? { deviceId: audioDeviceId }
+          : true
+      }
       data-lk-theme="default"
       className="h-full w-full"
       connect={true}

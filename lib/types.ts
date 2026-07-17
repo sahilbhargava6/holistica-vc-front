@@ -42,10 +42,12 @@ export interface VideoRoomProps {
   userName: string;
   /** Timestamp when the session expires */
   expiresAt?: number;
-  /** Duration of the session in minutes */
-  durationMinutes?: number;
   /** Whether background blur is enabled */
   blurEnabled?: boolean;
+  /** Selected video device ID from Green Room */
+  videoDeviceId?: string;
+  /** Selected audio device ID from Green Room */
+  audioDeviceId?: string;
 }
 
 /**

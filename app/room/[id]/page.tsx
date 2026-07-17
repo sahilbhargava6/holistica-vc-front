@@ -40,6 +40,8 @@ export default function RoomPage() {
 
   const [isReadyToJoin, setIsReadyToJoin] = useState(false);
   const [blurEnabled, setBlurEnabled] = useState(false);
+  const [videoDeviceId, setVideoDeviceId] = useState<string | undefined>();
+  const [audioDeviceId, setAudioDeviceId] = useState<string | undefined>();
   const [sessionMeta, setSessionMeta] = useState<{ durationMinutes?: number; expiresAt?: number }>({});
 
   const serverUrl = (process.env.NEXT_PUBLIC_LIVEKIT_URL || 'ws://localhost:7880').trim().replace(/\/+$/, '');
@@ -159,8 +161,10 @@ export default function RoomPage() {
         roomId={roomId}
         userName={userId}
         role={role}
-        onJoin={(blur) => {
+        onJoin={(blur, vidId, audId) => {
           setBlurEnabled(blur);
+          setVideoDeviceId(vidId);
+          setAudioDeviceId(audId);
           setIsReadyToJoin(true);
         }}
       />
@@ -177,6 +181,8 @@ export default function RoomPage() {
       durationMinutes={sessionMeta.durationMinutes}
       expiresAt={sessionMeta.expiresAt}
       blurEnabled={blurEnabled}
+      videoDeviceId={videoDeviceId}
+      audioDeviceId={audioDeviceId}
     />
   );
 }

@@ -7,7 +7,7 @@ interface GreenRoomProps {
   roomId: string;
   userName: string;
   role: UserRole;
-  onJoin: (blurEnabled: boolean) => void;
+  onJoin: (blurEnabled: boolean, videoDeviceId?: string, audioDeviceId?: string) => void;
 }
 
 interface DeviceInfo {
@@ -126,7 +126,7 @@ export default function GreenRoom({ roomId, userName, role, onJoin }: GreenRoomP
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-    onJoin(blurEnabled);
+    onJoin(blurEnabled, selectedVideoId, selectedAudioId);
   };
 
   return (
