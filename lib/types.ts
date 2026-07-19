@@ -15,6 +15,7 @@ export type UserRole = 'therapist' | 'client' | 'supervisor';
 export interface TokenRequestPayload {
   roomId: string;
   userId: string;
+  userName?: string;
   role: UserRole;
   durationMinutes?: number;
 }

@@ -31,6 +31,7 @@ export default function RoomPage() {
   const rawRole = (searchParams.get('role') || 'client').trim().toLowerCase();
   const role = rawRole as UserRole;
   const userId = (searchParams.get('userId') || 'anonymous').trim();
+  const userName = (searchParams.get('name') || searchParams.get('userName') || userId).trim();
 
   const [state, setState] = useState<RoomConnectionState>({
     token: null,
@@ -71,7 +72,7 @@ export default function RoomPage() {
 
     const fetchToken = async () => {
       try {
-        const payload: TokenRequestPayload = { roomId, userId, role, durationMinutes: 60 };
+        const payload: TokenRequestPayload = { roomId, userId, userName, role, durationMinutes: 60 };
 
         const response = await fetch(`${apiUrl}/video/token`, {
           method: 'POST',
@@ -99,7 +100,7 @@ export default function RoomPage() {
     };
 
     fetchToken();
-  }, [roomId, role, userId, apiUrl]);
+  }, [roomId, role, userId, userName, apiUrl]);
 
   // ── Loading State ──────────────────────────────────────────
   if (state.isLoading) {
