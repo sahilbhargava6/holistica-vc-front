@@ -44,6 +44,7 @@ export default function RoomPage() {
   const [videoDeviceId, setVideoDeviceId] = useState<string | undefined>();
   const [audioDeviceId, setAudioDeviceId] = useState<string | undefined>();
   const [sessionMeta, setSessionMeta] = useState<{ durationMinutes?: number; expiresAt?: number }>({});
+  const [isObserver, setIsObserver] = useState<boolean>(role === 'supervisor');
 
   const serverUrl = (process.env.NEXT_PUBLIC_LIVEKIT_URL || 'wss://holistica-vc-l3ziqon2.livekit.cloud').trim().replace(/\/+$/, '');
   
@@ -92,6 +93,11 @@ export default function RoomPage() {
           durationMinutes: data.durationMinutes,
           expiresAt: data.expiresAt,
         });
+        if (data.isObserver !== undefined) {
+          setIsObserver(data.isObserver);
+        } else if (role === 'supervisor' && (data.bookingType?.toUpperCase() === 'SUPERVISOR' || data.bookingType?.toLowerCase() === 'supervisor')) {
+          setIsObserver(false);
+        }
         setState({ token: data.token, isLoading: false, error: null });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to connect to video service';
@@ -123,7 +129,7 @@ export default function RoomPage() {
 
           {/* Subtle progress bar animation */}
           <div className="w-48 h-1 bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-[#76C7A6] to-cyan-400 rounded-full animate-pulse w-2/3" />
+            <div className="h-full bg-[#76C7A6] animate-pulse rounded-full" />
           </div>
         </div>
       </div>
@@ -133,10 +139,9 @@ export default function RoomPage() {
   // ── Error State ────────────────────────────────────────────
   if (state.error) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gray-950">
-        <div className="max-w-md w-full mx-4">
-          <div className="bg-gray-900 border border-red-500/20 rounded-2xl p-8 space-y-6">
-            {/* Error icon */}
+      <div className="h-screen w-full flex items-center justify-center bg-gray-950 p-4">
+        <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl">
+          <div className="space-y-4">
             <div className="flex justify-center">
               <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center">
                 <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -162,11 +167,12 @@ export default function RoomPage() {
     );
   }
 
-  // ── Pre-Call Green Room (For Therapist / Client) ───────────
+  // ── Pre-Call Green Room (For Therapist / Client / Supervisor Meeting) ───────────
   if (!state.token) return null;
 
-  // Supervisors (observers without camera) bypass the green room directly to observer mode
-  if (role !== 'supervisor' && !isReadyToJoin) {
+  // Only supervisors who are true observers (observing client sessions) bypass the green room directly to observer mode.
+  // In a Supervisor Meeting (`!isObserver`), the supervisor selects camera/mic in GreenRoom just like a therapist/client.
+  if ((role !== 'supervisor' || !isObserver) && !isReadyToJoin) {
     return (
       <GreenRoom
         roomId={roomId}
@@ -188,6 +194,7 @@ export default function RoomPage() {
       token={state.token}
       serverUrl={serverUrl}
       role={role}
+      isObserver={isObserver}
       userName={userId}
       durationMinutes={sessionMeta.durationMinutes}
       expiresAt={sessionMeta.expiresAt}

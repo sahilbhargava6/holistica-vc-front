@@ -27,6 +27,8 @@ export interface TokenResponse {
   token: string;
   durationMinutes?: number;
   expiresAt?: number;
+  isObserver?: boolean;
+  bookingType?: string;
 }
 
 /**
@@ -39,6 +41,8 @@ export interface VideoRoomProps {
   serverUrl: string;
   /** The user's role — determines UI visibility and permissions */
   role: UserRole;
+  /** Whether a supervisor is in observer mode (`true` for client sessions, `false` for supervisor meetings) */
+  isObserver?: boolean;
   /** Display name for the user */
   userName: string;
   /** Timestamp when the session expires */

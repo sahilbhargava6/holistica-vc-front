@@ -289,16 +289,27 @@ function CustomControlBar() {
  */
 function CustomVideoLayout({
   role,
+  isObserver = role === 'supervisor',
   userName,
   expiresAt,
   blurEnabled,
 }: {
   role: UserRole;
+  isObserver?: boolean;
   userName: string;
   expiresAt?: number;
   blurEnabled?: boolean;
 }) {
-  const config = ROLE_UI_CONFIG[role];
+  const config =
+    role === 'supervisor' && !isObserver
+      ? {
+          showControlBar: true,
+          enableVideo: true,
+          enableAudio: true,
+          label: 'Supervisor (Meeting)',
+          badgeClass: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+        }
+      : ROLE_UI_CONFIG[role];
 
   // Fetch camera and screen share tracks of all participants
   const tracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare]);
@@ -381,81 +392,73 @@ function CustomVideoLayout({
             <>
               <div className="w-px h-4 bg-gray-700" />
               <div
-                className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold transition-all ${
+                className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold transition-colors ${
                   isExpired
-                    ? 'bg-red-500/20 text-red-400 border border-red-500/40 animate-pulse'
+                    ? 'bg-red-500 text-white animate-pulse'
                     : isLowTime
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-bounce'
-                    : 'bg-gray-800 text-gray-300 border border-gray-700'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'bg-gray-800 text-gray-300'
                 }`}
               >
                 <span>⏱️</span>
-                <span>{formatTimer(remainingSeconds)}</span>
+                <span>{isExpired ? 'Ended' : formatTimer(remainingSeconds)}</span>
               </div>
             </>
           )}
         </div>
 
-        {/* Top-Center 5-Minute Grace Notice */}
-        {isLowTime && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-amber-500/90 text-gray-950 font-bold text-xs shadow-xl animate-pulse backdrop-blur-md">
-            ⏳ 5 minutes remaining in your scheduled therapy session. Please begin wrapping up.
-          </div>
-        )}
-
+        {/* Expired Banner */}
         {isExpired && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30 px-5 py-2 rounded-full bg-red-600/90 text-white font-bold text-xs shadow-xl animate-pulse backdrop-blur-md">
-            ⚠️ Scheduled session duration has expired.
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-red-600/90 text-white px-6 py-2 rounded-full font-semibold text-xs shadow-xl backdrop-blur-md animate-bounce">
+            ⚠️ Scheduled session duration has expired. Please wrap up your notes.
           </div>
         )}
 
-        {/* Main Big Screen (Remote Participants View) */}
+        {/* Remote Video / Shared Screen Grid */}
         <div className="w-full h-full flex items-center justify-center p-4">
-          {remoteTracks.length === 0 && remoteParticipants.length === 0 ? (
-            /* Waiting state when no remote participant has joined yet */
-            <div className="text-center space-y-3 max-w-sm px-6 py-8 rounded-2xl bg-gray-900/40 border border-gray-800/60 backdrop-blur-sm">
-              <div className="w-14 h-14 mx-auto rounded-full bg-[#76C7A6]/10 border border-[#76C7A6]/20 flex items-center justify-center text-[#76C7A6] animate-pulse">
-                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                </svg>
+          {remoteTracks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center text-center max-w-sm space-y-3 p-6">
+              <div className="w-16 h-16 rounded-full bg-gray-900 border border-gray-800 flex items-center justify-center">
+                <span className="w-3 h-3 rounded-full bg-[#76C7A6] animate-ping" />
               </div>
-              <h3 className="text-base font-semibold text-gray-200">Waiting for others</h3>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                You are inside the session (`{userName}`). Remote participants will appear right here as soon as they enter from the Green Room.
+              <h3 className="text-base font-semibold text-gray-300">
+                Waiting for others to join...
+              </h3>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                When the other participant joins the room, their video will automatically appear here.
               </p>
             </div>
-          ) : remoteTracks.length === 0 && remoteParticipants.length > 0 ? (
-            /* Remote participants connected but their cameras are currently OFF */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full max-w-4xl max-h-[80%]">
-              {remoteParticipants.map((p) => (
-                <div key={p.identity} className="w-full h-full rounded-2xl bg-gray-900/60 border border-gray-800 flex flex-col items-center justify-center gap-3 p-6 shadow-xl">
-                  <div className="w-16 h-16 rounded-full bg-[#76C7A6]/20 border border-[#76C7A6]/40 flex items-center justify-center text-[#76C7A6] font-bold text-xl shadow-lg">
-                    {p.identity.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="text-center">
-                    <h4 className="text-base font-semibold text-gray-200">{p.identity}</h4>
-                    <span className="text-xs text-[#76C7A6] font-medium block mt-0.5">Connected (Camera Off)</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : remoteTracks.length === 1 ? (
-            /* Single Remote Participant (Full Screen inside Black Box) */
-            <div className="w-full h-full rounded-xl overflow-hidden relative">
-              <ParticipantTile
-                trackRef={remoteTracks[0]}
-                className="w-full h-full object-cover !rounded-xl"
-              />
-            </div>
           ) : (
-            /* Multiple Remote Participants (Grid layout inside Black Box) */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full h-full">
-              {remoteTracks.map((trackRef) => (
-                <div key={trackRef.participant.identity + trackRef.source} className="w-full h-full rounded-xl overflow-hidden relative">
+            <div
+              className={`w-full h-full grid gap-4 items-center justify-center ${
+                remoteTracks.length === 1
+                  ? 'grid-cols-1 max-w-4xl'
+                  : remoteTracks.length === 2
+                  ? 'grid-cols-1 md:grid-cols-2'
+                  : 'grid-cols-2 md:grid-cols-3'
+              }`}
+            >
+              {remoteTracks.map((track) => (
+                <div
+                  key={track.publication.trackSid || track.participant.identity}
+                  className="relative w-full h-full max-h-[75vh] bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-xl flex items-center justify-center group"
+                >
                   <ParticipantTile
-                    trackRef={trackRef}
-                    className="w-full h-full object-cover !rounded-xl"
+                    trackRef={track}
+                    className="w-full h-full object-contain sm:object-cover"
                   />
+                  {/* Remote Participant Name Tag */}
+                  <div className="absolute bottom-3 left-3 z-10 px-3 py-1 rounded-lg bg-black/70 backdrop-blur-md border border-white/10 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#76C7A6]" />
+                    <span className="text-xs font-semibold text-gray-200">
+                      {track.participant.name || track.participant.identity}
+                    </span>
+                    {track.source === Track.Source.ScreenShare && (
+                      <span className="text-[10px] bg-sky-500/20 text-sky-300 px-1.5 py-0.2 rounded uppercase font-bold">
+                        Screen
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -463,7 +466,7 @@ function CustomVideoLayout({
         </div>
 
         {/* Lower Right Box for Camera (PiP Local Video overlay as requested) */}
-        {role !== 'supervisor' && (
+        {(role !== 'supervisor' || !isObserver) && (
           <div className="absolute bottom-20 right-4 sm:bottom-20 sm:right-6 z-30 w-44 sm:w-64 aspect-video bg-gray-900 border-2 border-gray-700/80 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 hover:scale-105">
             {localCameraTrack ? (
               <ParticipantTile
@@ -481,13 +484,13 @@ function CustomVideoLayout({
               </div>
             )}
             <div className="absolute bottom-1.5 left-2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-[10px] font-medium text-gray-300 pointer-events-none">
-              You ({role})
+              You ({role === 'supervisor' ? 'Supervisor' : role})
             </div>
           </div>
         )}
 
         {/* Supervisor Observer Notice (Bottom Center inside Black Box) */}
-        {role === 'supervisor' && (
+        {role === 'supervisor' && isObserver && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 px-5 py-2.5 bg-amber-500/15 border border-amber-500/30 rounded-full backdrop-blur-md shadow-lg max-w-md w-full mx-4 text-center">
             <span className="text-amber-300 text-xs font-medium">
               👁️ <strong>Observer Mode</strong> — Invisible to participants (`hidden: true`)
@@ -504,7 +507,7 @@ function CustomVideoLayout({
       </div>
 
       {/* ── RIGHT SECTION: Dedicated Chat Panel (Right Box as requested) ── */}
-      <SessionChat role={role} />
+      <SessionChat role={role} isObserver={isObserver} />
     </div>
   );
 }
@@ -516,13 +519,23 @@ export default function VideoRoom({
   token,
   serverUrl,
   role,
+  isObserver = role === 'supervisor',
   userName,
   expiresAt,
   blurEnabled,
   videoDeviceId,
   audioDeviceId,
 }: VideoRoomProps) {
-  const config = ROLE_UI_CONFIG[role];
+  const config =
+    role === 'supervisor' && !isObserver
+      ? {
+          showControlBar: true,
+          enableVideo: true,
+          enableAudio: true,
+          label: 'Supervisor (Meeting)',
+          badgeClass: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+        }
+      : ROLE_UI_CONFIG[role];
 
   return (
     <LiveKitRoom
@@ -552,6 +565,7 @@ export default function VideoRoom({
       {/* Custom UI layout matching wireframe with timer & blur */}
       <CustomVideoLayout
         role={role}
+        isObserver={isObserver}
         userName={userName}
         expiresAt={expiresAt}
         blurEnabled={blurEnabled}
