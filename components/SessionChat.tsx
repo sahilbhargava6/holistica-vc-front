@@ -35,6 +35,49 @@ export default function SessionChat({ role }: { role: UserRole }) {
     { id: string; timestamp: number; text: string; senderName: string; isLocal: boolean }[]
   >([]);
 
+  const getRoleLabel = (participantOrIdentity?: any, fallbackName?: string) => {
+    if (!participantOrIdentity && !fallbackName) return 'Participant';
+    let p = typeof participantOrIdentity === 'object' ? participantOrIdentity : null;
+    const identityStr = typeof participantOrIdentity === 'string' ? participantOrIdentity : (p?.identity || fallbackName || '');
+
+    // If not object, try finding participant in room.remoteParticipants
+    if (!p && room && identityStr) {
+      room.remoteParticipants.forEach((rp) => {
+        if (rp.identity === identityStr || rp.name === identityStr) p = rp;
+      });
+    }
+
+    // First check explicit metadata
+    if (p?.metadata) {
+      try {
+        const meta = JSON.parse(p.metadata);
+        const r = (meta.role || '').toLowerCase();
+        if (r === 'therapist') return 'Therapist';
+        if (r === 'client' || r === 'user') return 'Client';
+        if (r === 'supervisor') return 'Supervisor';
+      } catch {}
+    }
+
+    // Check display name or identity string for role clues
+    const checkStr = `${p?.name || ''} ${identityStr}`.toLowerCase();
+    if (checkStr.includes('therapist') || checkStr.includes('dr')) return 'Therapist';
+    if (checkStr.includes('supervisor')) return 'Supervisor';
+
+    // If it is a UUID (like 2b73bd0b-2d9b-46b3-...), convert to clean role name based on our own role
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}/i.test(identityStr) || /^[0-9a-f]{8}-[0-9a-f]{4}/i.test(fallbackName || '')) {
+      if (role === 'therapist') return 'Client';
+      if (role === 'client') return 'Therapist';
+      return 'Participant';
+    }
+
+    // If it's not a UUID and not empty, return capitalized name or role
+    if (fallbackName && !/^[0-9a-f]{8}-[0-9a-f]{4}/i.test(fallbackName)) {
+      return fallbackName;
+    }
+
+    return p?.name || 'Participant';
+  };
+
   // Listen for incoming DataChannel packets (both whispers and public chat)
   useEffect(() => {
     if (!room) return;
@@ -45,16 +88,18 @@ export default function SessionChat({ role }: { role: UserRole }) {
         const data = JSON.parse(decoded);
 
         if (data && data.type === 'whisper') {
-          setWhispers((prev) => [
-            ...prev,
-            {
-              id: data.id || `${Date.now()}`,
-              timestamp: data.timestamp || Date.now(),
-              text: data.text || '',
-              from: participant?.identity || data.from || 'Supervisor',
-              isLocal: false,
-            },
-          ]);
+          if (role === 'therapist' || role === 'supervisor') {
+            setWhispers((prev) => [
+              ...prev,
+              {
+                id: data.id || `${Date.now()}`,
+                timestamp: data.timestamp || Date.now(),
+                text: data.text || '',
+                from: getRoleLabel(participant, data.from || 'Supervisor'),
+                isLocal: false,
+              },
+            ]);
+          }
         } else if (data && data.type === 'public_chat') {
           setCustomPublicMessages((prev) => [
             ...prev,
@@ -62,7 +107,7 @@ export default function SessionChat({ role }: { role: UserRole }) {
               id: data.id || `${Date.now()}`,
               timestamp: data.timestamp || Date.now(),
               text: data.text || '',
-              senderName: participant?.identity || data.from || 'Participant',
+              senderName: getRoleLabel(participant, data.from || 'Participant'),
               isLocal: false,
             },
           ]);
@@ -76,7 +121,7 @@ export default function SessionChat({ role }: { role: UserRole }) {
     return () => {
       room.off(RoomEvent.DataReceived, handleDataReceived);
     };
-  }, [room]);
+  }, [room, role]);
 
   // Merge public chat messages (`useChat` + `customPublicMessages`) and private whispers, deduplicated by type, text content, and time window so messages never appear twice
   const mergedMessages = Array.from(
@@ -86,7 +131,7 @@ export default function SessionChat({ role }: { role: UserRole }) {
           id: msg.id || `${msg.timestamp}-${msg.message}`,
           timestamp: msg.timestamp || Date.now(),
           text: msg.message,
-          senderName: msg.from?.isLocal ? 'You' : (msg.from?.identity ?? msg.from?.name ?? 'Participant'),
+          senderName: msg.from?.isLocal ? 'You' : getRoleLabel(msg.from),
           isLocal: msg.from?.isLocal ?? false,
           isWhisper: false,
         })),
@@ -94,7 +139,7 @@ export default function SessionChat({ role }: { role: UserRole }) {
           id: msg.id,
           timestamp: msg.timestamp,
           text: msg.text,
-          senderName: msg.senderName,
+          senderName: msg.isLocal ? 'You' : getRoleLabel(msg.senderName),
           isLocal: msg.isLocal,
           isWhisper: false,
         })),
@@ -102,7 +147,7 @@ export default function SessionChat({ role }: { role: UserRole }) {
           id: w.id,
           timestamp: w.timestamp,
           text: w.text,
-          senderName: w.from,
+          senderName: w.isLocal ? 'You' : getRoleLabel(w.from),
           isLocal: w.isLocal,
           isWhisper: true,
         })),
@@ -135,11 +180,11 @@ export default function SessionChat({ role }: { role: UserRole }) {
           type: 'whisper',
           id: whisperId,
           text: messageToSend,
-          from: room.localParticipant.identity || 'Clinical Supervisor',
+          from: room.localParticipant.name || room.localParticipant.identity || 'Clinical Supervisor',
           timestamp: Date.now(),
         };
 
-        // Find remote participants whose role is therapist (with fallback to any remote participant if metadata is empty/custom)
+        // Find remote participants whose role is therapist (or by name/identity)
         const therapistIdentities: string[] = [];
         room.remoteParticipants.forEach((p) => {
           let metaRole = '';
@@ -148,6 +193,8 @@ export default function SessionChat({ role }: { role: UserRole }) {
           } catch {}
           if (
             metaRole === 'therapist' ||
+            (p.name && p.name.toLowerCase().includes('therapist')) ||
+            (p.name && p.name.toLowerCase().includes('dr')) ||
             p.identity.toLowerCase().includes('therapist') ||
             p.identity.toLowerCase().includes('dr') ||
             p.identity.toLowerCase().includes('sarah')
@@ -156,7 +203,20 @@ export default function SessionChat({ role }: { role: UserRole }) {
           }
         });
 
-        // Fallback: if no explicit therapist metadata matched but there are participants connected, send to remote participants
+        // Fallback: if no explicit therapist metadata matched, exclude known client/supervisor participants
+        if (therapistIdentities.length === 0 && room.remoteParticipants.size > 0) {
+          room.remoteParticipants.forEach((p) => {
+            let metaRole = '';
+            try {
+              metaRole = p.metadata ? JSON.parse(p.metadata).role : '';
+            } catch {}
+            if (metaRole !== 'client' && metaRole !== 'user' && metaRole !== 'supervisor') {
+              therapistIdentities.push(p.identity);
+            }
+          });
+        }
+
+        // Ultimate fallback if nothing found but participants exist: send to all remote participants (client side already filters out whispers)
         if (therapistIdentities.length === 0 && room.remoteParticipants.size > 0) {
           room.remoteParticipants.forEach((p) => therapistIdentities.push(p.identity));
         }
