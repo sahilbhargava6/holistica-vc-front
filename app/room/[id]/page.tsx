@@ -44,8 +44,18 @@ export default function RoomPage() {
   const [audioDeviceId, setAudioDeviceId] = useState<string | undefined>();
   const [sessionMeta, setSessionMeta] = useState<{ durationMinutes?: number; expiresAt?: number }>({});
 
-  const serverUrl = (process.env.NEXT_PUBLIC_LIVEKIT_URL || 'ws://localhost:7880').trim().replace(/\/+$/, '');
-  const apiUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').trim().replace(/\/+$/, '');
+  const serverUrl = (process.env.NEXT_PUBLIC_LIVEKIT_URL || 'wss://holistica-vc-l3ziqon2.livekit.cloud').trim().replace(/\/+$/, '');
+  
+  let rawApiUrl = (process.env.NEXT_PUBLIC_API_URL || 'https://holisticabackend-srapp.ondigitalocean.app/api/v1').trim().replace(/\/+$/, '');
+  // If NEXT_PUBLIC_API_URL was accidentally set to the LiveKit wss:// URL or starts with ws, fallback to backend
+  if (rawApiUrl.startsWith('ws://') || rawApiUrl.startsWith('wss://') || rawApiUrl.includes('livekit.cloud')) {
+    rawApiUrl = 'https://holisticabackend-srapp.ondigitalocean.app/api/v1';
+  }
+  // Ensure digitalocean URL includes /api/v1
+  if (rawApiUrl.includes('holisticabackend-srapp.ondigitalocean.app') && !rawApiUrl.endsWith('/api/v1')) {
+    rawApiUrl = 'https://holisticabackend-srapp.ondigitalocean.app/api/v1';
+  }
+  const apiUrl = rawApiUrl;
 
   useEffect(() => {
     // Validate the role before making the API call
